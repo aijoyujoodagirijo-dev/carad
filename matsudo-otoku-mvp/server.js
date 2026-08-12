@@ -1,68 +1,67 @@
+// server.js
 require('dotenv').config();
 
 const express = require('express');
 const path = require('path');
 
-console.log('=== SERVER STARTING ===');
-console.log('NODE_ENV:', process.env.NODE_ENV);
-console.log('PORT:', process.env.PORT);
-console.log('DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
-console.log('ADMIN_TOKEN:', process.env.ADMIN_TOKEN ? 'SET' : 'NOT SET');
+const { initDb } = require('./src/db');
+const trackRoutes = require('./src/trackRoutes');
+const statsRoutes = require('./src/statsRoutes');
+const { ADMIN_TOKEN } = require('./src/adminToken');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
+const PORT = Number(process.env.PORT) || 3000;
+
+// Renderなどのプロキシ経由でも正しいアクセス情報を取得
 app.set('trust proxy', true);
 
 app.use(express.json());
+
+// publicフォルダをWeb公開
 app.use(express.static(path.join(__dirname, 'public')));
+
+// API
+app.use('/api', trackRoutes);
+app.use('/api', statsRoutes);
+
+// ヘルスチェック
+app.get('/healthz', (req, res) => {
+  res.status(200).type('text').send('ok');
+});
+
+// トップページ
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// 404
+app.use((req, res) => {
+  res.status(404).json({
+    error: 'Not Found',
+    path: req.path
+  });
+});
 
 async function start() {
   try {
-    console.log('1. Loading application modules...');
+    console.log('=== SERVER STARTING ===');
+    console.log('NODE_ENV:', process.env.NODE_ENV);
+    console.log('PORT:', PORT);
+    console.log('DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
+    console.log('ADMIN_TOKEN:', process.env.ADMIN_TOKEN ? 'SET' : 'NOT SET');
 
-    const { initDb } = require('./src/db');
-    console.log('   ✓ db loaded');
-
-    const trackRoutes = require('./src/trackRoutes');
-    console.log('   ✓ trackRoutes loaded');
-    console.log('   trackRoutes type:', typeof trackRoutes);
-    console.log('   trackRoutes:', trackRoutes);
-
-    const statsRoutes = require('./src/statsRoutes');
-    console.log('   ✓ statsRoutes loaded');
-    console.log('   statsRoutes type:', typeof statsRoutes);
-    console.log('   statsRoutes:', statsRoutes);
-
-    const { ADMIN_TOKEN } = require('./src/adminToken');
-    console.log('   ✓ adminToken loaded');
-
-    // Routerになっているか確認
-    if (typeof trackRoutes !== 'function') {
-      throw new Error('trackRoutes が Express Router ではありません');
-    }
-
-    if (typeof statsRoutes !== 'function') {
-      throw new Error('statsRoutes が Express Router ではありません');
-    }
-
-    app.use('/api', trackRoutes);
-    app.use('/api', statsRoutes);
-
-    app.get('/healthz', (req, res) => {
-      res.send('ok');
-    });
-
-    console.log('2. Initializing database...');
-
+    console.log('Initializing database...');
     await initDb();
 
     console.log('✓ Database initialized successfully');
 
+    // 重要：RenderのPORTで待ち受ける
     app.listen(PORT, '0.0.0.0', () => {
       console.log('=================================');
       console.log('✅ SERVER IS LIVE');
       console.log(`PORT: ${PORT}`);
+      console.log('HOST: 0.0.0.0');
       console.log('=================================');
     });
 
