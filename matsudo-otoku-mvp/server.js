@@ -1,28 +1,16 @@
-// server.js
 require('dotenv').config();
-
-console.log('=== SERVER STARTING ===');
-console.log('NODE_ENV:', process.env.NODE_ENV || '(not set)');
-console.log('PORT:', process.env.PORT || '(not set)');
-console.log('DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
-console.log('ADMIN_TOKEN:', process.env.ADMIN_TOKEN ? 'SET' : 'NOT SET');
 
 const express = require('express');
 const path = require('path');
 
+console.log('=== SERVER STARTING ===');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('PORT:', process.env.PORT);
+console.log('DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
+console.log('ADMIN_TOKEN:', process.env.ADMIN_TOKEN ? 'SET' : 'NOT SET');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-// 起動時のエラーを必ずログに出す
-process.on('uncaughtException', (err) => {
-  console.error('❌ UNCAUGHT EXCEPTION');
-  console.error(err);
-});
-
-process.on('unhandledRejection', (err) => {
-  console.error('❌ UNHANDLED REJECTION');
-  console.error(err);
-});
 
 app.set('trust proxy', true);
 
@@ -30,61 +18,59 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 async function start() {
-  console.log('1. Loading application modules...');
-
-  let initDb;
-  let trackRoutes;
-  let statsRoutes;
-  let ADMIN_TOKEN;
-
   try {
-    console.log('2. Loading ./src/db...');
-    ({ initDb } = require('./src/db'));
+    console.log('1. Loading application modules...');
+
+    const { initDb } = require('./src/db');
     console.log('   ✓ db loaded');
 
-    console.log('3. Loading ./src/trackRoutes...');
-    trackRoutes = require('./src/trackRoutes');
+    const trackRoutes = require('./src/trackRoutes');
     console.log('   ✓ trackRoutes loaded');
+    console.log('   trackRoutes type:', typeof trackRoutes);
+    console.log('   trackRoutes:', trackRoutes);
 
-    console.log('4. Loading ./src/statsRoutes...');
-    statsRoutes = require('./src/statsRoutes');
+    const statsRoutes = require('./src/statsRoutes');
     console.log('   ✓ statsRoutes loaded');
+    console.log('   statsRoutes type:', typeof statsRoutes);
+    console.log('   statsRoutes:', statsRoutes);
 
-    console.log('5. Loading ./src/adminToken...');
-    ({ ADMIN_TOKEN } = require('./src/adminToken'));
+    const { ADMIN_TOKEN } = require('./src/adminToken');
     console.log('   ✓ adminToken loaded');
-  } catch (err) {
-    console.error('❌ MODULE LOADING FAILED');
-    console.error(err);
-    process.exit(1);
-  }
 
-  app.use('/api', trackRoutes);
-  app.use('/api', statsRoutes);
+    // Routerになっているか確認
+    if (typeof trackRoutes !== 'function') {
+      throw new Error('trackRoutes が Express Router ではありません');
+    }
 
-  app.get('/healthz', (req, res) => {
-    res.send('ok');
-  });
+    if (typeof statsRoutes !== 'function') {
+      throw new Error('statsRoutes が Express Router ではありません');
+    }
 
-  console.log('6. Connecting to database...');
+    app.use('/api', trackRoutes);
+    app.use('/api', statsRoutes);
 
-  try {
+    app.get('/healthz', (req, res) => {
+      res.send('ok');
+    });
+
+    console.log('2. Initializing database...');
+
     await initDb();
-    console.log('✅ データベース接続・初期化に成功しました');
+
+    console.log('✓ Database initialized successfully');
+
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log('=================================');
+      console.log('✅ SERVER IS LIVE');
+      console.log(`PORT: ${PORT}`);
+      console.log('=================================');
+    });
+
   } catch (err) {
-    console.error('❌ DATABASE INITIALIZATION FAILED');
+    console.error('❌ SERVER START FAILED');
     console.error(err);
     process.exit(1);
   }
-
-  console.log('7. Starting HTTP server...');
-
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log('========================================');
-    console.log('✅ 松戸のお得情報 MVP サーバー起動');
-    console.log(`✅ PORT: ${PORT}`);
-    console.log('========================================');
-  });
 }
 
 start();
