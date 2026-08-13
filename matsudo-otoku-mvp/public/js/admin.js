@@ -1,4 +1,5 @@
 (function () {
+  alert('admin.js が動いています');
 window.onerror = function(message, source, lineno, colno, error) {
   document.body.insertAdjacentHTML(
     'afterbegin',
