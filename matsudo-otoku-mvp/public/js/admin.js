@@ -1,4 +1,14 @@
 (function () {
+window.onerror = function(message, source, lineno, colno, error) {
+  document.body.insertAdjacentHTML(
+    'afterbegin',
+    '<div style="background:#fee;color:#900;padding:20px;font-size:16px;white-space:pre-wrap;">JSエラー: ' +
+    message +
+    '</div>'
+  );
+};
+
+console.log('ADMIN JS START');
   const TOKEN_KEY = 'matsudo_admin_token';
   const DOW_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 
