@@ -3,19 +3,15 @@ const { pool } = require('./db');
 
 const router = express.Router();
 
+/*
+ * 管理トークン確認
+ */
 function checkToken(req, res) {
   const token = req.query.token;
 
-  if (!process.env.ADMIN_TOKEN) {
-    res.status(500).json({
-      error: 'ADMIN_TOKEN is not configured'
-    });
-    return false;
-  }
-
   if (!token || token !== process.env.ADMIN_TOKEN) {
     res.status(401).json({
-      error: 'invalid token'
+      error: 'Unauthorized',
     });
     return false;
   }
@@ -23,10 +19,9 @@ function checkToken(req, res) {
   return true;
 }
 
-
-// ==============================
-// GET /api/stats
-// ==============================
+/*
+ * GET /api/stats
+ */
 router.get('/stats', async (req, res) => {
   if (!checkToken(req, res)) return;
 
@@ -48,38 +43,24 @@ router.get('/stats', async (req, res) => {
     const todayResult = await pool.query(`
       SELECT COUNT(*)::int AS today
       FROM accesses
-      WHERE access_date = CURRENT_DATE
+      WHERE access_date = CURRENT_DATE AT TIME ZONE 'Asia/Tokyo'
     `);
 
-    // 日別アクセス
-    const byDateResult = await pool.query(`
-      SELECT
-        access_date AS date,
-        COUNT(*)::int AS cnt
+    // 日数
+    const daysResult = await pool.query(`
+      SELECT COUNT(DISTINCT access_date)::int AS days
       FROM accesses
-      GROUP BY access_date
-      ORDER BY access_date
     `);
 
-    // 時間帯別アクセス
-    const byHourResult = await pool.query(`
-      SELECT
-        access_hour AS hour,
-        COUNT(*)::int AS cnt
-      FROM accesses
-      GROUP BY access_hour
-      ORDER BY access_hour
-    `);
+    const total = totalResult.rows[0].total;
+    const unique = uniqueResult.rows[0].unique;
+    const today = todayResult.rows[0].today;
+    const days = daysResult.rows[0].days;
 
-    // 曜日別アクセス
-    const byDowResult = await pool.query(`
-      SELECT
-        access_dow AS dow,
-        COUNT(*)::int AS cnt
-      FROM accesses
-      GROUP BY access_dow
-      ORDER BY access_dow
-    `);
+    const avgPerDay =
+      days > 0
+        ? Math.round((total / days) * 100) / 100
+        : 0;
 
     // 車両別
     const byCarResult = await pool.query(`
@@ -92,6 +73,36 @@ router.get('/stats', async (req, res) => {
       ORDER BY total DESC
     `);
 
+    // 日別
+    const byDateResult = await pool.query(`
+      SELECT
+        access_date::text AS date,
+        COUNT(*)::int AS cnt
+      FROM accesses
+      GROUP BY access_date
+      ORDER BY access_date
+    `);
+
+    // 時間帯別
+    const byHourResult = await pool.query(`
+      SELECT
+        access_hour AS hour,
+        COUNT(*)::int AS cnt
+      FROM accesses
+      GROUP BY access_hour
+      ORDER BY access_hour
+    `);
+
+    // 曜日別
+    const byDowResult = await pool.query(`
+      SELECT
+        access_dow AS dow,
+        COUNT(*)::int AS cnt
+      FROM accesses
+      GROUP BY access_dow
+      ORDER BY access_dow
+    `);
+
     // リファラー
     const byReferrerResult = await pool.query(`
       SELECT
@@ -100,6 +111,7 @@ router.get('/stats', async (req, res) => {
       FROM accesses
       GROUP BY COALESCE(NULLIF(referrer, ''), '(直接アクセス)')
       ORDER BY cnt DESC
+      LIMIT 100
     `);
 
     // User-Agent
@@ -118,17 +130,59 @@ router.get('/stats', async (req, res) => {
       SELECT
         accessed_at,
         car_id,
+        session_id,
         is_first_visit,
         ip_address,
         user_agent,
-        session_id,
-        referrer
+        referrer,
+        access_url
       FROM accesses
       ORDER BY accessed_at DESC
       LIMIT 100
     `);
 
-    // 直近1時間：同一セッションの大量アクセス
+    // 走行距離
+    const driveResult = await pool.query(`
+      SELECT
+        dl.log_date::text AS date,
+        dl.distance_km,
+        dl.note,
+        COALESCE(a.accesses, 0)::int AS accesses,
+        CASE
+          WHEN dl.distance_km > 0
+          THEN ROUND(
+            COALESCE(a.accesses, 0)::numeric / dl.distance_km,
+            2
+          )
+          ELSE NULL
+        END AS per_km
+      FROM drive_logs dl
+      LEFT JOIN (
+        SELECT
+          access_date,
+          COUNT(*) AS accesses
+        FROM accesses
+        GROUP BY access_date
+      ) a
+      ON a.access_date = dl.log_date
+      ORDER BY dl.log_date DESC
+    `);
+
+    // 総走行距離
+    const totalKmResult = await pool.query(`
+      SELECT
+        COALESCE(SUM(distance_km), 0)::numeric AS total_km
+      FROM drive_logs
+    `);
+
+    const totalKm = Number(totalKmResult.rows[0].total_km || 0);
+
+    const overallPerKm =
+      totalKm > 0
+        ? Math.round((total / totalKm) * 100) / 100
+        : null;
+
+    // 直近1時間の怪しいセッション
     const suspiciousSessionsResult = await pool.query(`
       SELECT
         session_id,
@@ -138,11 +192,12 @@ router.get('/stats', async (req, res) => {
       WHERE accessed_at >= NOW() - INTERVAL '1 hour'
         AND session_id IS NOT NULL
       GROUP BY session_id, car_id
-      HAVING COUNT(*) >= 20
+      HAVING COUNT(*) >= 10
       ORDER BY cnt DESC
+      LIMIT 50
     `);
 
-    // 直近1時間：同一IPの大量アクセス
+    // 直近1時間の怪しいIP
     const suspiciousIPsResult = await pool.query(`
       SELECT
         ip_address,
@@ -155,162 +210,66 @@ router.get('/stats', async (req, res) => {
       GROUP BY ip_address
       HAVING COUNT(*) >= 20
       ORDER BY cnt DESC
+      LIMIT 50
     `);
-
-    // 1日平均
-    const avgResult = await pool.query(`
-      SELECT
-        CASE
-          WHEN COUNT(DISTINCT access_date) = 0 THEN 0
-          ELSE ROUND(
-            COUNT(*)::numeric /
-            COUNT(DISTINCT access_date),
-            2
-          )
-        END AS avg_per_day
-      FROM accesses
-    `);
-
-    // 走行距離テーブルが存在する場合に使用
-    let totalKm = 0;
-    let overallPerKm = null;
-    let driveLogs = [];
-
-    try {
-      const driveResult = await pool.query(`
-        SELECT
-          date,
-          distance_km,
-          note
-        FROM drive_logs
-        ORDER BY date DESC
-      `);
-
-      driveLogs = driveResult.rows;
-
-      const kmResult = await pool.query(`
-        SELECT
-          COALESCE(SUM(distance_km), 0) AS total_km
-        FROM drive_logs
-      `);
-
-      totalKm = Number(kmResult.rows[0].total_km || 0);
-
-      if (totalKm > 0) {
-        const total = Number(totalResult.rows[0].total || 0);
-        overallPerKm = Number((total / totalKm).toFixed(2));
-      }
-
-      // 日別アクセス数を走行距離と結合
-      driveLogs = driveLogs.map((row) => {
-        const matchingDate = byDateResult.rows.find(
-          (d) =>
-            String(d.date).slice(0, 10) ===
-            String(row.date).slice(0, 10)
-        );
-
-        const accesses = matchingDate
-          ? Number(matchingDate.cnt)
-          : 0;
-
-        const distance = Number(row.distance_km || 0);
-
-        return {
-          date: String(row.date).slice(0, 10),
-          distance_km: distance,
-          accesses,
-          per_km:
-            distance > 0
-              ? Number((accesses / distance).toFixed(2))
-              : null,
-          note: row.note || ''
-        };
-      });
-
-    } catch (driveError) {
-      // 走行距離テーブルがまだない場合でも
-      // ダッシュボード本体は表示できるようにする
-      console.log(
-        'drive_logs unavailable:',
-        driveError.message
-      );
-    }
 
     res.json({
-      total: Number(totalResult.rows[0].total || 0),
-
-      unique: Number(uniqueResult.rows[0].unique || 0),
-
-      today: Number(todayResult.rows[0].today || 0),
-
-      avgPerDay: Number(
-        avgResult.rows[0].avg_per_day || 0
-      ),
+      total,
+      unique,
+      today,
+      avgPerDay,
 
       totalKm,
-
       overallPerKm,
 
       byCar: byCarResult.rows,
-
-      byDate: byDateResult.rows.map((r) => ({
-        date: String(r.date).slice(0, 10),
-        cnt: Number(r.cnt)
-      })),
-
-      byHour: byHourResult.rows.map((r) => ({
-        hour: Number(r.hour),
-        cnt: Number(r.cnt)
-      })),
-
-      byDow: byDowResult.rows.map((r) => ({
-        dow: Number(r.dow),
-        cnt: Number(r.cnt)
-      })),
+      byDate: byDateResult.rows,
+      byHour: byHourResult.rows,
+      byDow: byDowResult.rows,
 
       byReferrer: byReferrerResult.rows,
-
       byUserAgent: byUserAgentResult.rows,
 
       recentLog: recentLogResult.rows,
+
+      driveLogs: driveResult.rows,
 
       suspiciousSessions:
         suspiciousSessionsResult.rows,
 
       suspiciousIPs:
         suspiciousIPsResult.rows,
-
-      driveLogs
     });
 
   } catch (err) {
-    console.error('STATS ERROR:', err);
+    console.error('stats error:', err);
 
     res.status(500).json({
-      error: 'failed to load statistics',
-      detail: err.message
+      error: 'stats error',
+      message: err.message,
     });
   }
 });
 
 
-// ==============================
-// GET /api/export.csv
-// ==============================
+/*
+ * GET /api/export.csv
+ */
 router.get('/export.csv', async (req, res) => {
   if (!checkToken(req, res)) return;
 
   try {
     const result = await pool.query(`
       SELECT
+        id,
         accessed_at,
         car_id,
         session_id,
         is_first_visit,
-        ip_address,
-        user_agent,
-        referrer,
         access_url,
+        referrer,
+        user_agent,
+        ip_address,
         access_date,
         access_hour,
         access_dow
@@ -319,51 +278,49 @@ router.get('/export.csv', async (req, res) => {
     `);
 
     const header = [
-      '日時',
-      '車両ID',
-      'セッションID',
-      '初回訪問',
-      'IP',
-      'User-Agent',
-      'リファラー',
-      'URL',
-      '日付',
-      '時間',
-      '曜日'
+      'id',
+      'accessed_at',
+      'car_id',
+      'session_id',
+      'is_first_visit',
+      'access_url',
+      'referrer',
+      'user_agent',
+      'ip_address',
+      'access_date',
+      'access_hour',
+      'access_dow',
     ];
 
-    const escapeCsv = (value) => {
+    function csvEscape(value) {
       if (value === null || value === undefined) {
         return '';
       }
 
-      return '"' +
-        String(value)
-          .replace(/"/g, '""') +
-        '"';
-    };
+      const str = String(value);
 
-    const lines = [
-      header.map(escapeCsv).join(',')
-    ];
+      if (
+        str.includes(',') ||
+        str.includes('"') ||
+        str.includes('\n') ||
+        str.includes('\r')
+      ) {
+        return '"' + str.replace(/"/g, '""') + '"';
+      }
 
-    for (const row of result.rows) {
-      lines.push([
-        row.accessed_at,
-        row.car_id,
-        row.session_id,
-        row.is_first_visit ? '初回' : '再訪',
-        row.ip_address,
-        row.user_agent,
-        row.referrer,
-        row.access_url,
-        row.access_date,
-        row.access_hour,
-        row.access_dow
-      ].map(escapeCsv).join(','));
+      return str;
     }
 
-    const csv = '\uFEFF' + lines.join('\n');
+    const lines = [
+      header.join(','),
+      ...result.rows.map(row =>
+        header
+          .map(key => csvEscape(row[key]))
+          .join(',')
+      ),
+    ];
+
+    const csv = '\uFEFF' + lines.join('\r\n');
 
     res.setHeader(
       'Content-Type',
@@ -378,18 +335,18 @@ router.get('/export.csv', async (req, res) => {
     res.send(csv);
 
   } catch (err) {
-    console.error('CSV ERROR:', err);
+    console.error('CSV error:', err);
 
-    res.status(500).send(
-      'CSV export failed'
-    );
+    res.status(500).json({
+      error: 'CSV export error',
+    });
   }
 });
 
 
-// ==============================
-// POST /api/drive-log
-// ==============================
+/*
+ * POST /api/drive-log
+ */
 router.post('/drive-log', async (req, res) => {
   if (!checkToken(req, res)) return;
 
@@ -397,70 +354,59 @@ router.post('/drive-log', async (req, res) => {
     const {
       date,
       distance_km,
-      note
+      note,
     } = req.body || {};
 
     if (!date) {
       return res.status(400).json({
-        error: 'date is required'
+        error: 'date is required',
       });
     }
 
-    if (
-      distance_km === undefined ||
-      distance_km === null ||
-      Number.isNaN(Number(distance_km)) ||
-      Number(distance_km) < 0
-    ) {
+    const km = Number(distance_km);
+
+    if (!Number.isFinite(km) || km < 0) {
       return res.status(400).json({
-        error: 'distance_km is invalid'
+        error: 'distance_km is invalid',
       });
     }
 
-    // drive_logsテーブルを作成
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS drive_logs (
-        id SERIAL PRIMARY KEY,
-        date DATE UNIQUE NOT NULL,
-        distance_km NUMERIC(10,2) NOT NULL DEFAULT 0,
-        note TEXT,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-
-    // 同じ日付なら上書き
-    const result = await pool.query(
+    await pool.query(
       `
       INSERT INTO drive_logs
-        (date, distance_km, note, updated_at)
+        (
+          log_date,
+          distance_km,
+          note,
+          updated_at
+        )
       VALUES
         ($1, $2, $3, NOW())
-      ON CONFLICT (date)
+      ON CONFLICT (log_date)
       DO UPDATE SET
         distance_km = EXCLUDED.distance_km,
         note = EXCLUDED.note,
         updated_at = NOW()
-      RETURNING *
       `,
       [
         date,
-        Number(distance_km),
-        note ? String(note).slice(0, 500) : null
+        km,
+        note
+          ? String(note).slice(0, 500)
+          : null,
       ]
     );
 
     res.json({
       status: 'ok',
-      row: result.rows[0]
     });
 
   } catch (err) {
-    console.error('DRIVE LOG ERROR:', err);
+    console.error('drive-log error:', err);
 
     res.status(500).json({
-      error: 'failed to save drive log',
-      detail: err.message
+      error: 'drive-log error',
+      message: err.message,
     });
   }
 });
