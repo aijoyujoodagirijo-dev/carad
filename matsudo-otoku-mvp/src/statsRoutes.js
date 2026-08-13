@@ -41,10 +41,12 @@ router.get('/stats', async (req, res) => {
 
     // 今日のアクセス数
     const todayResult = await pool.query(`
-      SELECT COUNT(*)::int AS today
-      FROM accesses
-      WHERE access_date = CURRENT_DATE AT TIME ZONE 'Asia/Tokyo'
-    `);
+  SELECT COUNT(*)::int AS today
+  FROM accesses
+  WHERE access_date = (
+    CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tokyo'
+  )::date
+`);
 
     // 日数
     const daysResult = await pool.query(`
