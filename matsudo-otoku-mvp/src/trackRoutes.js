@@ -1,9 +1,9 @@
-
 const express = require('express');
 const { pool, getJstParts } = require('./db');
 
 const router = express.Router();
 
+// POST /api/track
 router.post('/track', async (req, res) => {
   try {
     const {
@@ -14,6 +14,7 @@ router.post('/track', async (req, res) => {
       referrer
     } = req.body || {};
 
+    // 車両IDは必須
     if (!car_id || typeof car_id !== 'string') {
       return res.status(400).json({
         error: 'car_id is required'
@@ -22,6 +23,7 @@ router.post('/track', async (req, res) => {
 
     const now = new Date();
 
+    // Render経由のアクセス元IP
     const ip =
       req.headers['x-forwarded-for']?.split(',')[0].trim() ||
       req.ip ||
@@ -29,12 +31,14 @@ router.post('/track', async (req, res) => {
 
     const userAgent = req.get('user-agent') || '';
 
+    // 日本時間の集計用データ
     const {
       accessDate,
       accessHour,
       accessDow
     } = getJstParts(now);
 
+    // データベースへ保存
     await pool.query(
       `INSERT INTO accesses
         (
@@ -54,33 +58,47 @@ router.post('/track', async (req, res) => {
         ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
       [
         String(car_id).slice(0, 50),
+
         session_id
           ? String(session_id).slice(0, 100)
           : null,
+
         !!is_first_visit,
+
         url
           ? String(url).slice(0, 500)
           : null,
+
         referrer
           ? String(referrer).slice(0, 500)
           : null,
+
         userAgent.slice(0, 500),
-        ip,
+
+        ip.slice(0, 100),
+
         now.toISOString(),
+
         accessDate,
+
         accessHour,
+
         accessDow
       ]
     );
 
-    res.json({
+    console.log(
+      `TRACK OK: car_id=${car_id}, session_id=${session_id || 'none'}`
+    );
+
+    return res.json({
       status: 'ok'
     });
 
   } catch (err) {
-    console.error('track error:', err);
+    console.error('TRACK ERROR:', err);
 
-    res.status(500).json({
+    return res.status(500).json({
       error: 'internal error'
     });
   }
