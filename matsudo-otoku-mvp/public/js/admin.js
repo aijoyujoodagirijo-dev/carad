@@ -1,58 +1,27 @@
 document.addEventListener('DOMContentLoaded', function () {
-  'use strict';
-
-  console.log('ADMIN JS START');
 
   const TOKEN_KEY = 'matsudo_admin_token';
-  const DOW_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 
   const tokenForm = document.getElementById('tokenForm');
   const tokenInput = document.getElementById('tokenInput');
   const tokenSubmit = document.getElementById('tokenSubmit');
   const dashboard = document.getElementById('dashboard');
-  const adminError = document.getElementById('adminError');
 
   let currentToken = null;
-  let dateChart = null;
-  let hourChart = null;
-  let dowChart = null;
-  let refreshTimer = null;
-
-  function showError(message) {
-    console.error(message);
-
-    if (adminError) {
-      adminError.style.display = 'block';
-      adminError.textContent =
-        '⚠️ ダッシュボードエラー\n\n' + message;
-    } else {
-      alert(message);
-    }
-  }
-
-  function clearError() {
-    if (adminError) {
-      adminError.style.display = 'none';
-      adminError.textContent = '';
-    }
-  }
 
   function esc(value) {
-    if (value === null || value === undefined) {
-      return '';
-    }
+    if (value === null || value === undefined) return '';
 
     return String(value)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
+      .replace(/"/g, '&quot;');
   }
 
-  function num(value) {
-    const n = Number(value);
-    return Number.isFinite(n) ? n : 0;
+  function showError(message) {
+    console.error(message);
+    alert('⚠️ ダッシュボードエラー\n\n' + message);
   }
 
   function renderByCar(rows) {
@@ -62,13 +31,9 @@ document.addEventListener('DOMContentLoaded', function () {
     rows = Array.isArray(rows) ? rows : [];
 
     let html =
-      '<tr>' +
-      '<th>車両ID</th>' +
-      '<th>総アクセス</th>' +
-      '<th>ユニーク</th>' +
-      '</tr>';
+      '<tr><th>車両ID</th><th>総アクセス</th><th>ユニーク</th></tr>';
 
-    if (rows.length === 0) {
+    if (!rows.length) {
       html += '<tr><td colspan="3">データなし</td></tr>';
     } else {
       rows.forEach(function (r) {
@@ -84,25 +49,15 @@ document.addEventListener('DOMContentLoaded', function () {
     el.innerHTML = html;
   }
 
-  function renderTable(
-    el,
-    rows,
-    keyLabel,
-    valueLabel,
-    keyField,
-    valueField
-  ) {
+  function renderTable(el, rows, keyLabel, valueLabel, keyField, valueField) {
     if (!el) return;
 
     rows = Array.isArray(rows) ? rows : [];
 
     let html =
-      '<tr>' +
-      '<th>' + esc(keyLabel) + '</th>' +
-      '<th>' + esc(valueLabel) + '</th>' +
-      '</tr>';
+      '<tr><th>' + keyLabel + '</th><th>' + valueLabel + '</th></tr>';
 
-    if (rows.length === 0) {
+    if (!rows.length) {
       html += '<tr><td colspan="2">データなし</td></tr>';
     } else {
       rows.forEach(function (r) {
@@ -132,7 +87,7 @@ document.addEventListener('DOMContentLoaded', function () {
       '<th>User-Agent</th>' +
       '</tr>';
 
-    if (rows.length === 0) {
+    if (!rows.length) {
       html += '<tr><td colspan="5">データなし</td></tr>';
     } else {
       rows.forEach(function (r) {
@@ -142,12 +97,9 @@ document.addEventListener('DOMContentLoaded', function () {
           '<tr>' +
           '<td>' + esc(r.accessed_at) + '</td>' +
           '<td>' + esc(r.car_id) + '</td>' +
-          '<td>' +
-          (r.is_first_visit ? '初回' : '再訪') +
-          '</td>' +
+          '<td>' + (r.is_first_visit ? '初回' : '再訪') + '</td>' +
           '<td>' + esc(r.ip_address) + '</td>' +
-          '<td title="' + esc(ua) + '">' +
-          esc(ua.slice(0, 30)) +
+          '<td>' + esc(ua.slice(0, 30)) +
           (ua.length > 30 ? '...' : '') +
           '</td>' +
           '</tr>';
@@ -172,11 +124,8 @@ document.addEventListener('DOMContentLoaded', function () {
       '<th>メモ</th>' +
       '</tr>';
 
-    if (rows.length === 0) {
-      html +=
-        '<tr>' +
-        '<td colspan="5">まだ記録がありません</td>' +
-        '</tr>';
+    if (!rows.length) {
+      html += '<tr><td colspan="5">まだ記録がありません</td></tr>';
     } else {
       rows.forEach(function (r) {
         html +=
@@ -185,12 +134,7 @@ document.addEventListener('DOMContentLoaded', function () {
           '<td>' + esc(r.distance_km) + '</td>' +
           '<td>' + esc(r.accesses) + '</td>' +
           '<td>' +
-          (
-            r.per_km === null ||
-            r.per_km === undefined
-              ? '-'
-              : esc(r.per_km)
-          ) +
+          (r.per_km == null ? '-' : esc(r.per_km)) +
           '</td>' +
           '<td>' + esc(r.note || '') + '</td>' +
           '</tr>';
@@ -207,10 +151,7 @@ document.addEventListener('DOMContentLoaded', function () {
     sessions = Array.isArray(sessions) ? sessions : [];
     ips = Array.isArray(ips) ? ips : [];
 
-    if (
-      sessions.length === 0 &&
-      ips.length === 0
-    ) {
+    if (!sessions.length && !ips.length) {
       el.innerHTML =
         '<p style="font-size:13px;color:#8bc9a3;">' +
         '直近1時間で疑わしいアクセスは検出されていません。' +
@@ -223,12 +164,9 @@ document.addEventListener('DOMContentLoaded', function () {
     sessions.forEach(function (s) {
       html +=
         '<div class="warn-box">' +
-        'セッション ' +
-        esc(s.session_id) +
-        ' が車両 ' +
-        esc(s.car_id) +
-        ' に ' +
-        esc(s.cnt) +
+        'セッション ' + esc(s.session_id) +
+        ' が車両 ' + esc(s.car_id) +
+        ' に ' + esc(s.cnt) +
         '回アクセス（直近1時間）' +
         '</div>';
     });
@@ -236,10 +174,8 @@ document.addEventListener('DOMContentLoaded', function () {
     ips.forEach(function (i) {
       html +=
         '<div class="warn-box">' +
-        'IP ' +
-        esc(i.ip_address) +
-        ' から ' +
-        esc(i.cnt) +
+        'IP ' + esc(i.ip_address) +
+        ' から ' + esc(i.cnt) +
         '回アクセス / ' +
         esc(i.sessions) +
         'セッション（直近1時間）' +
@@ -249,240 +185,161 @@ document.addEventListener('DOMContentLoaded', function () {
     el.innerHTML = html;
   }
 
-  function destroyCharts() {
-    if (dateChart) {
-      dateChart.destroy();
-      dateChart = null;
+  /*
+   * Chart.jsを使わない簡易グラフ
+   */
+  function renderSimpleChart(canvasId, rows, labelField, valueField, title) {
+
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    const parent = canvas.parentElement;
+
+    const old = parent.querySelector('.simple-chart');
+    if (old) old.remove();
+
+    canvas.style.display = 'none';
+
+    rows = Array.isArray(rows) ? rows : [];
+
+    const box = document.createElement('div');
+    box.className = 'simple-chart';
+
+    const titleEl = document.createElement('div');
+    titleEl.style.fontWeight = 'bold';
+    titleEl.style.marginBottom = '10px';
+    titleEl.textContent = title;
+
+    box.appendChild(titleEl);
+
+    if (!rows.length) {
+      const empty = document.createElement('div');
+      empty.textContent = 'まだデータがありません';
+      empty.style.color = '#999';
+      box.appendChild(empty);
+      parent.appendChild(box);
+      return;
     }
 
-    if (hourChart) {
-      hourChart.destroy();
-      hourChart = null;
-    }
+    let max = 0;
 
-    if (dowChart) {
-      dowChart.destroy();
-      dowChart = null;
-    }
+    rows.forEach(function (r) {
+      const n = Number(r[valueField]) || 0;
+      if (n > max) max = n;
+    });
+
+    rows.forEach(function (r) {
+
+      const value = Number(r[valueField]) || 0;
+
+      const row = document.createElement('div');
+      row.style.marginBottom = '8px';
+
+      const label = document.createElement('div');
+      label.textContent = String(r[labelField]);
+      label.style.fontSize = '12px';
+      label.style.marginBottom = '3px';
+
+      const barArea = document.createElement('div');
+      barArea.style.display = 'flex';
+      barArea.style.alignItems = 'center';
+      barArea.style.gap = '8px';
+
+      const bar = document.createElement('div');
+
+      const width =
+        max > 0
+          ? Math.max(3, (value / max) * 100)
+          : 3;
+
+      bar.style.width = width + '%';
+      bar.style.height = '18px';
+      bar.style.background = '#4cd97b';
+      bar.style.borderRadius = '4px';
+
+      const number = document.createElement('span');
+      number.textContent = value;
+      number.style.fontSize = '12px';
+
+      barArea.appendChild(bar);
+      barArea.appendChild(number);
+
+      row.appendChild(label);
+      row.appendChild(barArea);
+
+      box.appendChild(row);
+    });
+
+    parent.appendChild(box);
   }
 
   function renderCharts(byDate, byHour, byDow) {
-    console.log('グラフ描画開始');
 
-    if (typeof Chart === 'undefined') {
-      showError(
-        'Chart.js が読み込まれていません。' +
-        '\nadmin.html のChart.js読み込みを確認してください。'
-      );
-      return;
-    }
+    renderSimpleChart(
+      'chartByDate',
+      byDate,
+      'date',
+      'cnt',
+      '日別アクセス数'
+    );
 
-    byDate = Array.isArray(byDate) ? byDate : [];
-    byHour = Array.isArray(byHour) ? byHour : [];
-    byDow = Array.isArray(byDow) ? byDow : [];
-
-    const dateCanvas =
-      document.getElementById('chartByDate');
-
-    const hourCanvas =
-      document.getElementById('chartByHour');
-
-    const dowCanvas =
-      document.getElementById('chartByDow');
-
-    if (
-      !dateCanvas ||
-      !hourCanvas ||
-      !dowCanvas
-    ) {
-      showError(
-        'グラフ用のcanvasが見つかりません。\n' +
-        'admin.html のIDを確認してください。'
-      );
-      return;
-    }
-
-    destroyCharts();
-
-    /*
-     * 日別
-     */
-
-    const dateLabels = byDate.map(function (item) {
-      return String(item.date || '');
-    });
-
-    const dateValues = byDate.map(function (item) {
-      return num(item.cnt);
-    });
-
-    dateChart = new Chart(dateCanvas, {
-      type: 'bar',
-
-      data: {
-        labels: dateLabels,
-
-        datasets: [{
-          label: 'アクセス数',
-          data: dateValues
-        }]
-      },
-
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-
-        scales: {
-          y: {
-            beginAtZero: true,
-
-            ticks: {
-              precision: 0
-            }
-          }
-        },
-
-        plugins: {
-          legend: {
-            display: false
-          }
-        }
-      }
-    });
-
-    /*
-     * 時間帯別
-     */
-
-    const hourMap = {};
+    const hourRows = [];
 
     for (let h = 0; h < 24; h++) {
-      hourMap[h] = 0;
-    }
+      let found = 0;
 
-    byHour.forEach(function (item) {
-      const hour = Number(item.hour);
-
-      if (
-        Number.isInteger(hour) &&
-        hour >= 0 &&
-        hour <= 23
-      ) {
-        hourMap[hour] = num(item.cnt);
-      }
-    });
-
-    const hourLabels = [];
-    const hourValues = [];
-
-    for (let h = 0; h < 24; h++) {
-      hourLabels.push(h + '時');
-      hourValues.push(hourMap[h]);
-    }
-
-    hourChart = new Chart(hourCanvas, {
-      type: 'bar',
-
-      data: {
-        labels: hourLabels,
-
-        datasets: [{
-          label: 'アクセス数',
-          data: hourValues
-        }]
-      },
-
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-
-        scales: {
-          y: {
-            beginAtZero: true,
-
-            ticks: {
-              precision: 0
-            }
-          }
-        },
-
-        plugins: {
-          legend: {
-            display: false
-          }
+      (byHour || []).forEach(function (r) {
+        if (Number(r.hour) === h) {
+          found = Number(r.cnt) || 0;
         }
-      }
-    });
+      });
 
-    /*
-     * 曜日別
-     */
+      hourRows.push({
+        hour: h + '時',
+        cnt: found
+      });
+    }
 
-    const dowMap = {};
+    renderSimpleChart(
+      'chartByHour',
+      hourRows,
+      'hour',
+      'cnt',
+      '時間帯別アクセス数'
+    );
+
+    const labels = ['日', '月', '火', '水', '木', '金', '土'];
+
+    const dowRows = [];
 
     for (let d = 0; d < 7; d++) {
-      dowMap[d] = 0;
-    }
+      let found = 0;
 
-    byDow.forEach(function (item) {
-      const dow = Number(item.dow);
-
-      if (
-        Number.isInteger(dow) &&
-        dow >= 0 &&
-        dow <= 6
-      ) {
-        dowMap[dow] = num(item.cnt);
-      }
-    });
-
-    const dowValues = [];
-
-    for (let d = 0; d < 7; d++) {
-      dowValues.push(dowMap[d]);
-    }
-
-    dowChart = new Chart(dowCanvas, {
-      type: 'bar',
-
-      data: {
-        labels: DOW_LABELS,
-
-        datasets: [{
-          label: 'アクセス数',
-          data: dowValues
-        }]
-      },
-
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-
-        scales: {
-          y: {
-            beginAtZero: true,
-
-            ticks: {
-              precision: 0
-            }
-          }
-        },
-
-        plugins: {
-          legend: {
-            display: false
-          }
+      (byDow || []).forEach(function (r) {
+        if (Number(r.dow) === d) {
+          found = Number(r.cnt) || 0;
         }
-      }
-    });
+      });
 
-    console.log('グラフ描画完了');
+      dowRows.push({
+        dow: labels[d],
+        cnt: found
+      });
+    }
+
+    renderSimpleChart(
+      'chartByDow',
+      dowRows,
+      'dow',
+      'cnt',
+      '曜日別アクセス数'
+    );
   }
 
   async function loadStats(token) {
-    console.log('統計取得開始');
 
     try {
+
       const response = await fetch(
         '/api/stats?token=' +
         encodeURIComponent(token),
@@ -491,90 +348,33 @@ document.addEventListener('DOMContentLoaded', function () {
         }
       );
 
-      console.log(
-        'API status:',
-        response.status
-      );
-
       if (!response.ok) {
-        if (response.status === 401 ||
-            response.status === 403) {
-          localStorage.removeItem(TOKEN_KEY);
-          currentToken = null;
-
-          if (tokenForm) {
-            tokenForm.style.display = 'flex';
-          }
-
-          if (dashboard) {
-            dashboard.style.display = 'none';
-          }
-
-          throw new Error(
-            '管理トークンが正しくありません。'
-          );
-        }
-
         throw new Error(
-          'APIエラー: HTTP ' +
-          response.status
+          '統計APIエラー HTTP ' + response.status
         );
       }
 
       const data = await response.json();
 
-      console.log('API data:', data);
+      document.getElementById('statTotal').textContent =
+        data.total ?? 0;
 
-      const statTotal =
-        document.getElementById('statTotal');
+      document.getElementById('statUnique').textContent =
+        data.unique ?? 0;
 
-      const statUnique =
-        document.getElementById('statUnique');
+      document.getElementById('statToday').textContent =
+        data.today ?? 0;
 
-      const statToday =
-        document.getElementById('statToday');
+      document.getElementById('statAvgPerDay').textContent =
+        data.avgPerDay ?? 0;
 
-      const statAvgPerDay =
-        document.getElementById('statAvgPerDay');
+      document.getElementById('statTotalKm').textContent =
+        data.totalKm ?? 0;
 
-      const statTotalKm =
-        document.getElementById('statTotalKm');
-
-      const statPerKm =
-        document.getElementById('statPerKm');
-
-      if (statTotal) {
-        statTotal.textContent =
-          data.total ?? 0;
-      }
-
-      if (statUnique) {
-        statUnique.textContent =
-          data.unique ?? 0;
-      }
-
-      if (statToday) {
-        statToday.textContent =
-          data.today ?? 0;
-      }
-
-      if (statAvgPerDay) {
-        statAvgPerDay.textContent =
-          data.avgPerDay ?? 0;
-      }
-
-      if (statTotalKm) {
-        statTotalKm.textContent =
-          data.totalKm ?? 0;
-      }
-
-      if (statPerKm) {
-        statPerKm.textContent =
-          data.overallPerKm === null ||
-          data.overallPerKm === undefined
-            ? '-'
-            : data.overallPerKm;
-      }
+      document.getElementById('statPerKm').textContent =
+        data.overallPerKm == null
+          ? '-'
+          : data.overallPerKm;
 
       renderByCar(data.byCar);
 
@@ -590,9 +390,7 @@ document.addEventListener('DOMContentLoaded', function () {
       );
 
       renderTable(
-        document.getElementById(
-          'tableReferrer'
-        ),
+        document.getElementById('tableReferrer'),
         data.byReferrer,
         'リファラー',
         '件数',
@@ -601,9 +399,7 @@ document.addEventListener('DOMContentLoaded', function () {
       );
 
       renderTable(
-        document.getElementById(
-          'tableUA'
-        ),
+        document.getElementById('tableUA'),
         data.byUserAgent,
         'User-Agent',
         '件数',
@@ -616,9 +412,7 @@ document.addEventListener('DOMContentLoaded', function () {
       renderDriveLog(data.driveLogs);
 
       const csvLink =
-        document.getElementById(
-          'csvDownloadLink'
-        );
+        document.getElementById('csvDownloadLink');
 
       if (csvLink) {
         csvLink.href =
@@ -626,25 +420,12 @@ document.addEventListener('DOMContentLoaded', function () {
           encodeURIComponent(token);
       }
 
-      if (tokenForm) {
-        tokenForm.style.display = 'none';
-      }
-
-      if (dashboard) {
-        dashboard.style.display = 'block';
-      }
-
-      clearError();
-
-      console.log(
-        'ダッシュボード表示完了'
-      );
+      tokenForm.style.display = 'none';
+      dashboard.style.display = 'block';
 
     } catch (error) {
-      console.error(
-        'loadStats error:',
-        error
-      );
+
+      console.error(error);
 
       showError(
         'データ取得に失敗しました。\n\n' +
@@ -654,10 +435,9 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function start(token) {
+
     if (!token) {
-      showError(
-        '管理トークンを入力してください。'
-      );
+      showError('管理トークンを入力してください。');
       return;
     }
 
@@ -669,38 +449,13 @@ document.addEventListener('DOMContentLoaded', function () {
     );
 
     loadStats(token);
-
-    /*
-     * 既存のタイマーを止める
-     */
-    if (refreshTimer) {
-      clearInterval(refreshTimer);
-    }
-
-    /*
-     * 15秒ごとに更新
-     */
-    refreshTimer = setInterval(
-      function () {
-        if (currentToken) {
-          loadStats(currentToken);
-        }
-      },
-      15000
-    );
   }
 
-  /*
-   * 表示ボタン
-   */
+  if (tokenSubmit) {
 
-  if (tokenSubmit && tokenInput) {
     tokenSubmit.addEventListener(
       'click',
       function () {
-        console.log(
-          '表示ボタンが押されました'
-        );
 
         const token =
           tokenInput.value.trim();
@@ -715,155 +470,99 @@ document.addEventListener('DOMContentLoaded', function () {
         start(token);
       }
     );
+  }
+
+  if (tokenInput) {
 
     tokenInput.addEventListener(
       'keydown',
       function (event) {
+
         if (event.key === 'Enter') {
           event.preventDefault();
           tokenSubmit.click();
         }
       }
     );
-  } else {
-    showError(
-      '管理トークン入力欄が見つかりません。\n' +
-      'admin.html のtokenInput / tokenSubmitを確認してください。'
-    );
   }
 
-  /*
-   * 走行距離
-   */
-
   const driveSubmit =
-    document.getElementById(
-      'driveSubmit'
-    );
+    document.getElementById('driveSubmit');
 
   if (driveSubmit) {
+
     driveSubmit.addEventListener(
       'click',
       async function () {
-        const dateEl =
-          document.getElementById(
-            'driveDate'
-          );
-
-        const kmEl =
-          document.getElementById(
-            'driveKm'
-          );
-
-        const noteEl =
-          document.getElementById(
-            'driveNote'
-          );
 
         const date =
-          dateEl ? dateEl.value : '';
+          document.getElementById('driveDate').value;
 
         const km =
-          kmEl ? kmEl.value : '';
+          document.getElementById('driveKm').value;
 
         const note =
-          noteEl ? noteEl.value : '';
+          document.getElementById('driveNote').value;
 
         if (!date) {
-          alert(
-            '日付を選択してください。'
-          );
+          alert('日付を選択してください。');
           return;
         }
 
-        if (
-          km === '' ||
-          Number(km) < 0
-        ) {
-          alert(
-            '走行距離(km)を入力してください。'
-          );
+        if (km === '' || Number(km) < 0) {
+          alert('走行距離(km)を入力してください。');
           return;
         }
 
         if (!currentToken) {
-          alert(
-            '先に管理トークンを入力してください。'
-          );
+          alert('先に管理トークンを入力してください。');
           return;
         }
 
         try {
-          const response =
-            await fetch(
-              '/api/drive-log?token=' +
-              encodeURIComponent(
-                currentToken
-              ),
-              {
-                method: 'POST',
 
-                headers: {
-                  'Content-Type':
-                    'application/json'
-                },
-
-                body: JSON.stringify({
-                  date: date,
-                  distance_km:
-                    Number(km),
-                  note: note
-                })
-              }
-            );
+          const response = await fetch(
+            '/api/drive-log?token=' +
+            encodeURIComponent(currentToken),
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                date: date,
+                distance_km: Number(km),
+                note: note
+              })
+            }
+          );
 
           if (!response.ok) {
             throw new Error(
-              '走行距離登録エラー: HTTP ' +
+              '走行距離登録エラー HTTP ' +
               response.status
             );
           }
 
-          if (kmEl) {
-            kmEl.value = '';
-          }
+          document.getElementById('driveKm').value = '';
+          document.getElementById('driveNote').value = '';
 
-          if (noteEl) {
-            noteEl.value = '';
-          }
-
-          await loadStats(
-            currentToken
-          );
+          await loadStats(currentToken);
 
         } catch (error) {
-          showError(
-            error.message
-          );
+          showError(error.message);
         }
       }
     );
   }
 
-  /*
-   * 今日の日付を初期値にする
-   */
-
   const driveDate =
-    document.getElementById(
-      'driveDate'
-    );
+    document.getElementById('driveDate');
 
-  if (driveDate && !driveDate.value) {
+  if (driveDate) {
     driveDate.value =
-      new Date()
-        .toISOString()
-        .slice(0, 10);
+      new Date().toISOString().slice(0, 10);
   }
-
-  /*
-   * URLの ?token= または保存済みトークン
-   */
 
   const urlToken =
     new URLSearchParams(
@@ -872,21 +571,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
   const savedToken =
     urlToken ||
-    localStorage.getItem(
-      TOKEN_KEY
-    );
+    localStorage.getItem(TOKEN_KEY);
 
-  if (
-    savedToken &&
-    tokenInput
-  ) {
-    tokenInput.value =
-      savedToken;
-
+  if (savedToken && tokenInput) {
+    tokenInput.value = savedToken;
     start(savedToken);
   }
 
-  console.log(
-    'ADMIN JS READY'
-  );
 });
